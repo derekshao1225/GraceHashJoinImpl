@@ -98,7 +98,13 @@ vector<unsigned int> probe(Disk *disk, Mem *mem, vector<Bucket> &partitions)
     Page *curr_page = nullptr;
     for (auto bucket : partitions)
     { // get a single bucket: disk_page_ids and disk ptr
-        for (auto l_id : bucket.get_left_rel())
+        vector<unsigned int> small_rel = bucket.get_left_rel();
+        vector<unsigned int> large_rel = bucket.get_right_rel();
+        if(bucket.num_right_rel_record < bucket.num_left_rel_record) {
+            small_rel = bucket.get_right_rel();
+            large_rel = bucket.get_left_rel();
+        } 
+        for (auto l_id : small_rel)
         {                                         // for each left disk page id
             mem->loadFromDisk(disk, l_id, in_id); // load left disk page to input mem page
             for (unsigned int i = 0; i < input_page->size(); i++)
@@ -109,7 +115,7 @@ vector<unsigned int> probe(Disk *disk, Mem *mem, vector<Bucket> &partitions)
                 curr_page->loadRecord(temp); // add record to hash table in memory
             }
         }
-        for (auto r_id : bucket.get_right_rel())
+        for (auto r_id : large_rel)
         {
             mem->loadFromDisk(disk, r_id, in_id); // load right disk page to input mem page
             for (unsigned int i = 0; i < input_page->size(); i++)
