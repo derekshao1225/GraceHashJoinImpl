@@ -44,12 +44,12 @@ vector<Bucket> partition(
 
         for (unsigned int j = 0; j < bufferIn->size(); j++)
         {
-            Record currentRecord(bufferIn->get_record(j));
+            Record currentRecord(bufferIn->get_record(j)); // copy record
             unsigned int bufferID = currentRecord.partition_hash() % hashOut;
             Page *memHash = mem->mem_page(bufferID);
             memHash->loadRecord(currentRecord);
 
-            if (RECORDS_PER_PAGE < memHash->size())
+            if (memHash->full())
             {
                 buckVector[bufferID].add_left_rel_page(mem->flushToDisk(disk, bufferID));
             }
@@ -70,7 +70,7 @@ vector<Bucket> partition(
             Page *memHash = mem->mem_page(bufferID);
             memHash->loadRecord(currentRecord);
 
-            if (RECORDS_PER_PAGE < memHash->size())
+            if (memHash->full())
             {
                 buckVector[bufferID].add_right_rel_page(mem->flushToDisk(disk, bufferID));
             }
@@ -103,7 +103,7 @@ vector<unsigned int> probe(Disk *disk, Mem *mem, vector<Bucket> &partitions)
             mem->loadFromDisk(disk, l_id, in_id); // load left disk page to input mem page
             for (unsigned int i = 0; i < input_page->size(); i++)
             { // for each record in input mem page
-                Record temp = input_page->get_record(i);
+                Record temp(input_page->get_record(i));
                 unsigned int hash_val = temp.probe_hash() % (MEM_SIZE_IN_PAGE - 2); // hash record
                 curr_page = mem->mem_page(hash_val);
                 curr_page->loadRecord(temp); // add record to hash table in memory
@@ -114,21 +114,28 @@ vector<unsigned int> probe(Disk *disk, Mem *mem, vector<Bucket> &partitions)
             mem->loadFromDisk(disk, r_id, in_id); // load right disk page to input mem page
             for (unsigned int i = 0; i < input_page->size(); i++)
             { // for each record in input mem page
-                Record temp = input_page->get_record(i);
+                Record temp(input_page->get_record(i));
                 unsigned int hash_val = temp.probe_hash() % (MEM_SIZE_IN_PAGE - 2); // hash record
                 curr_page = mem->mem_page(hash_val);
                 for (unsigned int j = 0; j < curr_page->size(); j++)
                 { // any left record in this hash page can make pairs
                     Record left = curr_page->get_record(j);
-                    output_page->loadPair(left, temp); // add current pair to output mem page
-                    if (output_page->size() == RECORDS_PER_PAGE)
-                    { // flush output page when it is full
-                        int out_disk_id = mem->flushToDisk(disk, out_id);
-                        result.push_back(out_disk_id);
+                    if(left == temp) { // equal key is found between this pair
+                        output_page->loadPair(left, temp); // add current pair to output mem page
+                        if (output_page->full())
+                        { // flush output page when it is full
+                            result.push_back(mem->flushToDisk(disk, out_id));
+                        }
                     }
                 }
             }
         }
+        for(unsigned int i = 0; i < in_id; i++) { // clear hash table for current bucket
+            mem->mem_page(i)->reset();
+        }
+    }
+    if(mem->mem_page(out_id)->size() > 0) { // flush the remaining into disk
+        result.push_back(mem->flushToDisk(disk, out_id));
     }
     return result;
 }
